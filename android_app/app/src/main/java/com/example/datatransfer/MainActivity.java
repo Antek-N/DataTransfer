@@ -1,110 +1,119 @@
 package com.example.datatransfer;
 
-import android.Manifest;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
-import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.Button;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.app.NotificationCompat;
-import androidx.core.content.ContextCompat;
+import android.widget.TextView;
+import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.RequiresApi;
+import androidx.appcompat.app.AppCompatActivity;
+
+import com.google.firebase.messaging.FirebaseMessaging;
+
+// Code can work only on Android API 33 (TIRAMISU) or higher
+@RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
 public class MainActivity extends AppCompatActivity {
 
-    // Constants for notification channel ID and request code
-    private static final String CHANNEL_ID_NOTIFICATION = "CHANNEL_ID_NOTIFICATION";
-    private static final int NOTIFICATION_REQUEST_CODE = 101;
-    Button button;
+    // Constants for logging and notification permission
+    private static final String TAG = "MainActivity";
+    private static final String NOTIFICATION_PERMISSION = android.Manifest.permission.POST_NOTIFICATIONS;
+    private static final String FCM_TOKEN_CLIP_LABEL = "FCM Token";
+    // UI components
+    private TextView tokenTextView;
+    private Button copyButton;
+    // ActivityResultLauncher for requesting notification permission
+    private final ActivityResultLauncher<String> requestNotificationPermissionLauncher = createNotificationPermissionLauncher();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        // Initialize the user interface elements
         initializeUI();
-
-        // Check and request notification permission if necessary
-        checkAndRequestNotificationPermission();
+        requestNotificationPermissionIfNeeded();
+        fetchAndDisplayFCMToken();
+        setupCopyButton();
     }
 
-    // Method to initialize UI components
+    // Initializes the UI components (TextView and Button)
     private void initializeUI() {
-        button = findViewById(R.id.btnNotifications);
-        button.setOnClickListener(view -> makeNotification());
+        tokenTextView = findViewById(R.id.tokenTextView);
+        copyButton = findViewById(R.id.copyButton);
     }
 
-    // Method to check and request notification permission
-    private void checkAndRequestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_REQUEST_CODE);
-            }
+    // Creates an ActivityResultLauncher to handle the notification permission request
+    private ActivityResultLauncher<String> createNotificationPermissionLauncher() {
+        return registerForActivityResult(new ActivityResultContracts.RequestPermission(), this::logPermissionResult);
+    }
+
+    // Logs whether the notification permission was granted or denied
+    private void logPermissionResult(boolean isGranted) {
+        String logMessage = isGranted ? "Notification permission granted" : "Notification permission denied";
+        Log.d(TAG, logMessage);
+    }
+
+    // Requests notification permission if it hasn't been granted already
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && checkSelfPermission(NOTIFICATION_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+            requestNotificationPermissionLauncher.launch(NOTIFICATION_PERMISSION);
+        }
+    }
+    // Fetches the Firebase Cloud Messaging (FCM) token and displays it in the UI
+    private void fetchAndDisplayFCMToken() {
+        FirebaseMessaging.getInstance().getToken()
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful()) {
+                        displayToken(task.getResult());
+                    } else {
+                        handleTokenFetchFailure(task.getException());
+                    }
+                });
+    }
+
+    // Displays the FCM token in the TextView and logs it
+    private void displayToken(String token) {
+        Log.d(TAG, "FCM Token: " + token);
+        tokenTextView.setText(token);
+    }
+
+    // Handles errors that occur when fetching the FCM token
+    private void handleTokenFetchFailure(Exception exception) {
+        Log.w(TAG, "Fetching FCM registration token failed", exception);
+    }
+
+    // Sets up the copy button to copy the token to the clipboard when clicked
+    private void setupCopyButton() {
+        copyButton.setOnClickListener(v -> copyTokenToClipboard());
+    }
+
+    // Copies the FCM token to the clipboard if it's valid
+    private void copyTokenToClipboard() {
+        String token = tokenTextView.getText().toString();
+        if (isValidToken(token)) {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipData clip = ClipData.newPlainText(FCM_TOKEN_CLIP_LABEL, token);
+            clipboard.setPrimaryClip(clip);
+            showToast("Token copied to clipboard");
+        } else {
+            showToast("Token not available yet");
         }
     }
 
-    // Method to create and display a notification
-    private void makeNotification() {
-        NotificationCompat.Builder builder = createNotificationBuilder();
-
-        // Set the content intent for the notification
-        PendingIntent pendingIntent = createContentIntent();
-        builder.setContentIntent(pendingIntent);
-
-        // Add a copy action to the notification
-        PendingIntent copyPendingIntent = createCopyActionIntent();
-        builder.addAction(R.drawable.ic_notifications, "Copy Text", copyPendingIntent);
-
-        // Get the notification manager and create the notification channel
-        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        createNotificationChannel(notificationManager);
-
-        // Display the notification
-        notificationManager.notify(0, builder.build());
+    // Validates the FCM token by checking if it's non-null, non-empty, and not a placeholder text
+    private boolean isValidToken(String token) {
+        return token != null && !token.isEmpty() && !"Fetching FCM Token...".equals(token);
     }
 
-    // Method to create a NotificationCompat.Builder object
-    private NotificationCompat.Builder createNotificationBuilder() {
-        return new NotificationCompat.Builder(getApplicationContext(), CHANNEL_ID_NOTIFICATION)
-                .setSmallIcon(R.drawable.ic_notifications)
-                .setContentTitle("Notification Title")
-                .setContentText("Some text for notification here")
-                .setAutoCancel(true)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT);
-    }
-
-    // Method to create a PendingIntent for the content of the notification
-    private PendingIntent createContentIntent() {
-        Intent intent = new Intent(getApplicationContext(), NotificationActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        intent.putExtra("data", "some value to be passed here");
-        return PendingIntent.getActivity(getApplicationContext(), 0, intent, PendingIntent.FLAG_MUTABLE);
-    }
-
-    // Method to create a PendingIntent for the copy action
-    private PendingIntent createCopyActionIntent() {
-        Intent copyIntent = new Intent(getApplicationContext(), CopyReceiver.class);
-        copyIntent.putExtra("text_to_copy", "Thiss_is_the_text_to_copy");
-        return PendingIntent.getBroadcast(getApplicationContext(), 0, copyIntent, PendingIntent.FLAG_MUTABLE);
-    }
-
-    // Method to create a notification channel (required for Android O and above)
-    private void createNotificationChannel(NotificationManager notificationManager) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel notificationChannel = notificationManager.getNotificationChannel(CHANNEL_ID_NOTIFICATION);
-            if (notificationChannel == null) {
-                notificationChannel = new NotificationChannel(CHANNEL_ID_NOTIFICATION, "some description", NotificationManager.IMPORTANCE_HIGH);
-                notificationChannel.setLightColor(Color.GREEN);
-                notificationChannel.enableVibration(true);
-                notificationManager.createNotificationChannel(notificationChannel);
-            }
-        }
+    // Displays a toast message on the screen
+    private void showToast(String message) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 }
