@@ -24,8 +24,8 @@ class AppConfig:
     else:
         ICON_PATH = os.path.abspath("icon/icon.ico")  # Path to the icon file when running from source code
 
-    # Set path to the file storing the device token
-    TOKEN_FILE_PATH = "data/saved_token.txt"
+    # Set path to the folder storing the file with the device token
+    TOKEN_FOLDER_PATH = f"{os.getenv('LOCALAPPDATA')}/DataTransfer"
 
     @staticmethod
     def get_project_id() -> str:

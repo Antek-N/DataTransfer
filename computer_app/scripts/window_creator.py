@@ -152,8 +152,10 @@ class WindowCreator(QMainWindow):
         :param: None
         :return: None
         """
-        if os.path.exists(AppConfig.TOKEN_FILE_PATH):
-            with open(AppConfig.TOKEN_FILE_PATH, "r") as file:
+        token_file_path = f"{AppConfig.TOKEN_FOLDER_PATH}/saved_token.txt"
+
+        if os.path.exists(token_file_path):
+            with open(token_file_path, "r") as file:
                 saved_token = file.read().strip()
                 self.token_input.setText(saved_token)
                 self.remember_token_checkbox.setChecked(True)
@@ -166,7 +168,14 @@ class WindowCreator(QMainWindow):
         :return: None
         """
         token = self.token_input.text().strip()
-        with open(AppConfig.TOKEN_FILE_PATH, "w") as file:
+        token_file_path = f"{AppConfig.TOKEN_FOLDER_PATH}/saved_token.txt"
+
+        # Create the folder storing the file if it doesn't exist
+        if not os.path.exists(AppConfig.TOKEN_FOLDER_PATH):
+            os.makedirs(AppConfig.TOKEN_FOLDER_PATH)
+
+        # Save token to file
+        with open(token_file_path, "w") as file:
             file.write(token)
 
     @staticmethod
@@ -177,5 +186,7 @@ class WindowCreator(QMainWindow):
         :param: None
         :return: None
         """
-        if os.path.exists(AppConfig.TOKEN_FILE_PATH):
-            os.remove(AppConfig.TOKEN_FILE_PATH)
+        token_file_path = f"{AppConfig.TOKEN_FOLDER_PATH}/saved_token.txt"
+
+        if os.path.exists(token_file_path):
+            os.remove(token_file_path)
